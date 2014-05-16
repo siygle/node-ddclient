@@ -3,6 +3,9 @@
   "version": "0.0.0",
   "description": "A node version of ddclient",
   "main": "index.js",
+  "bin": {
+    "node-ddclient": "./node-ddclient.js"
+  },
   "scripts": {
     "test": "npm test"
   },
@@ -15,6 +18,8 @@
   "license": "BSD-2-Clause",
   "dependencies": {
     "request": "~2.34.0",
-    "async": "~0.8.0"
+    "async": "~0.8.0",
+    "cron": "~1.0.4",
+    "daemon": "~1.1.0"
   }
 }

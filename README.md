@@ -23,4 +23,4 @@ module.exports = {
 
 ### Run as system daemon
 
-TODO
+Use cron and daemon to run as daemon regular. You can copy node-ddclient.conf to `/etc/init` to setup upstart, don't forget to change YOUR_NODE_DDCLIENT_PATH to real file path.

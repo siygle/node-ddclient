@@ -2,7 +2,9 @@
 
 var fs = require('fs');
 
-var request = require('request'),
+var daemon = require('daemon')(),
+    CronJob = require('cron').CronJob,
+    request = require('request'),
     async = require('async'),
     config = require('./config');
 
@@ -139,54 +141,59 @@ function checkAvail(cb) {
 /*
  * main function 
  */
-async.parallel([
-  async.apply(getIp),
-  async.apply(checkAvail)
-], function(err, results) {
-  if (err) {
-    console.error(err);
-  } else {
-    var addr = results[0];
-    var dns = getSubdomain(results[1]);
-    if (addr !== dns.content) {
-      async.waterfall([
-        function(callback) {
-          var update = {
-            id: dns.rec_id,
-            content: addr
-          };
-          updateDnsInfo(update, function(error, updateRes){
-            try {
-              var data = JSON.parse(updateRes);
-              if (data.result != 'success') {
-                callback(new Error('Update DNS data fail!'));
-              } else {
-                callback(error);
-              }
-            } catch(e) {
-              callback(e);
-            }
-          });
-        },
-        function(callback) {
-          getDnsInfo(function(error, data) {
-            callback(error, data);
-          });
-        },
-        function(updateResult, callback) {
-          fs.writeFile(DNS_TMP, updateResult, function(writeErr) {
-            callback(writeErr);
-          });
-        }
-      ], function(serErr) {
-        if (serErr) {
-          console.error('Has new data but cannot update dns file!');
-        } else {
-          console.log('Update dns from ' + dns.content + ' to ' + addr);
-        }
-      });
+var job = new CronJob('00 */5 * * * *', function() {
+  async.parallel([
+    async.apply(getIp),
+    async.apply(checkAvail)
+  ], function(err, results) {
+    if (err) {
+      console.error(err);
     } else {
-      console.log('No need to update!');
+      var addr = results[0];
+      var dns = getSubdomain(results[1]);
+      if (addr !== dns.content) {
+        async.waterfall([
+          function(callback) {
+            var update = {
+              id: dns.rec_id,
+              content: addr
+            };
+            updateDnsInfo(update, function(error, updateRes){
+              try {
+                var data = JSON.parse(updateRes);
+                if (data.result != 'success') {
+                  callback(new Error('Update DNS data fail!'));
+                } else {
+                  callback(error);
+                }
+              } catch(e) {
+                callback(e);
+              }
+            });
+          },
+          function(callback) {
+            getDnsInfo(function(error, data) {
+              callback(error, data);
+            });
+          },
+          function(updateResult, callback) {
+            fs.writeFile(DNS_TMP, updateResult, function(writeErr) {
+              callback(writeErr);
+            });
+          }
+        ], function(serErr) {
+          if (serErr) {
+            console.error('Has new data but cannot update dns file!');
+          } else {
+            console.log('Update dns from ' + dns.content + ' to ' + addr);
+          }
+        });
+      } else {
+        console.log('No need to update!');
+      }
     }
-  }
-});
+  });
+}, null, true);
+
+// start as cronjob
+job.start();
