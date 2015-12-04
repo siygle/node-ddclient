@@ -33,16 +33,17 @@ function getIp(cb) {
  */
 function getSubdomain(obj) {
   if (typeof(obj) !== 'object') return false;
-  let result = [], obj = {}, param = config.cloudflare;
+  let result = [], subdomains = config.cloudflare.subdomain;
 
   if (obj.response &&
       obj.response.recs &&
       obj.response.recs.objs &&
       obj.response.recs.count &&
       obj.response.recs.count > 0) {
-      var items = obj.response.recs.objs;
+
+      let items = obj.response.recs.objs;
       items.forEach(function(item) {
-        if (item.name === param.subdomain) {
+        if (subdomains.indexOf(item.name) !== -1) {
           result.push(item);
         }
       });
@@ -66,7 +67,7 @@ function getDnsInfo(cb) {
     },
     json: true
   }, function(err, res, body) {
-    return (err) ? cb(err) : cb(body);
+    return (err) ? cb(err) : cb(null, body);
   });
 }
 
@@ -111,8 +112,8 @@ let job = new CronJob(config.cronRule, function() {
       let addr = results[0];
       let subdomains = getSubdomain(results[1]);
 
-      nasync.times(subdomains.length, function(n, next){
-        let dns = subdomains[n - 1];
+      nasync.timesSeries(subdomains.length, function(n, next){
+        let dns = subdomains[n];
         if (!dns['rec_id']) {
           next(null, `${dns.name} format error`);
         } else if (addr === dns.content) {
@@ -124,7 +125,7 @@ let job = new CronJob(config.cronRule, function() {
           };
           updateDnsInfo(update, function(err, data) {
             if (data.result != 'success') {
-              console.error(`Update ${dns.name} DNS data fail`));
+              console.error(`Update ${dns.name} DNS data fail`);
             }
             next(err, `Update ${dns.name} to ${addr}`);
           });
