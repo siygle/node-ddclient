@@ -1,27 +1,27 @@
 #!/usr/bin/env node
+'use strict';
 
-var fs = require('fs');
+const CronJob = require('cron').CronJob;
+const request = require('request');
+const nasync = require('async');
+const debug = require('debug')('ddclient');
+const config = require('./config');
 
-var daemon = require('daemon')(),
-    CronJob = require('cron').CronJob,
-    request = require('request'),
-    async = require('async'),
-    config = require('./config');
-
-const DNS_TMP = '/tmp/ddclient-dns';
 const CF_API = 'https://www.cloudflare.com/api_json.html';
 
 /*
  * Use getIp in config to setup remote host which provide get current ip service
  */
 function getIp(cb) {
-  var serv = (config.getIp) ? config.getIp : 'http://ifconfig.me/ip';
+  let serv = (config.getIp) ? config.getIp : 'http://ifconfig.me/ip';
+
   request.get(serv, function(err, req, body) {
     if (err) {
       console.error('getIp fail!');
       cb(err);
     } else {
-      var addr = body.replace(/\n/g, '');
+      let addr = body.replace(/\n/g, '');
+      debug('getIp', addr);
       cb(null, addr);
     }
   });
@@ -31,17 +31,9 @@ function getIp(cb) {
  * Filter dns data and return target submain data
  * Always save full data so need a simple way to extract target subdomain data
  */
-function getSubdomain(str) {
-  if (typeof(str) != 'string') return;
-  var result = {}, obj = {};
-  var param = config.cloudflare;
-
-  try {
-    obj = JSON.parse(str);
-  } catch(e) {
-    console.error('Fail JSON format dns data!');
-    return result;
-  }
+function getSubdomain(obj) {
+  if (typeof(obj) !== 'object') return false;
+  let result = [], obj = {}, param = config.cloudflare;
 
   if (obj.response &&
       obj.response.recs &&
@@ -51,10 +43,11 @@ function getSubdomain(str) {
       var items = obj.response.recs.objs;
       items.forEach(function(item) {
         if (item.name === param.subdomain) {
-          result = item;
+          result.push(item);
         }
       });
   }
+  debug('getSubdomain', result);
   return result;
 }
 
@@ -70,19 +63,10 @@ function getDnsInfo(cb) {
       tkn: param.apikey,
       email: param.email,
       z: param.domain
-    }
+    },
+    json: true
   }, function(err, res, body) {
-    if (err) {
-      cb(err);
-    } else {
-      fs.writeFile(DNS_TMP, body, function(innErr) {
-        if (innErr) {
-          cb(innErr);
-        } else {
-          cb(null, body);
-        }
-      });
-    }
+    return (err) ? cb(err) : cb(body);
   });
 }
 
@@ -105,92 +89,54 @@ function updateDnsInfo(dns, cb) {
       content: dns.content,
       service_mode: '0',
       ttl: '1'
-    }
+    },
+    json: true
   }, function(err, res, body) {
-    if (err) {
-      cb(err);
-    } else {
-      cb(null, body);
-    }
+    return (err) ? cb(err) : cb(null, body);
   });
 }
 
 /*
- * check if dns file exist
- * if exist then return target dns data
- * otherwise fetch dns data first
+ * main function
  */
-function checkAvail(cb) {
-  fs.exists(DNS_TMP, function(exists) {
-    if (!exists) {
-      getDnsInfo(function(getErr, getRes) {
-        if (!getErr) {
-          cb(null, getRes);
-        }
-      });
-    } else {
-      fs.readFile(DNS_TMP, function(readErr, readRes) {
-        if (!readErr) {
-          cb(null, readRes.toString());
-        }
-      });
-    }
-  });
-}
-
-/*
- * main function 
- */
-var job = new CronJob('00 */5 * * * *', function() {
-  async.parallel([
-    async.apply(getIp),
-    async.apply(checkAvail)
+let job = new CronJob(config.cronRule, function() {
+  nasync.parallel([
+    nasync.apply(getIp),
+    nasync.apply(getDnsInfo)
   ], function(err, results) {
     if (err) {
       console.error(err);
     } else {
-      var addr = results[0];
-      var dns = getSubdomain(results[1]);
-      if (addr !== dns.content) {
-        async.waterfall([
-          function(callback) {
-            var update = {
-              id: dns.rec_id,
-              content: addr
-            };
-            updateDnsInfo(update, function(error, updateRes){
-              try {
-                var data = JSON.parse(updateRes);
-                if (data.result != 'success') {
-                  callback(new Error('Update DNS data fail!'));
-                } else {
-                  callback(error);
-                }
-              } catch(e) {
-                callback(e);
-              }
-            });
-          },
-          function(callback) {
-            getDnsInfo(function(error, data) {
-              callback(error, data);
-            });
-          },
-          function(updateResult, callback) {
-            fs.writeFile(DNS_TMP, updateResult, function(writeErr) {
-              callback(writeErr);
-            });
-          }
-        ], function(serErr) {
-          if (serErr) {
-            console.error('Has new data but cannot update dns file!');
-          } else {
-            console.log('Update dns from ' + dns.content + ' to ' + addr);
-          }
-        });
-      } else {
-        console.log('No need to update!');
-      }
+      debug('Prepare for DNS update', results);
+      let addr = results[0];
+      let subdomains = getSubdomain(results[1]);
+
+      nasync.times(subdomains.length, function(n, next){
+        let dns = subdomains[n - 1];
+        if (!dns['rec_id']) {
+          next(null, `${dns.name} format error`);
+        } else if (addr === dns.content) {
+          next(null, `${dns.name} don't need to update ip now`);
+        } else {
+          let update = {
+            id: dns.rec_id,
+            content: addr
+          };
+          updateDnsInfo(update, function(err, data) {
+            if (data.result != 'success') {
+              console.error(`Update ${dns.name} DNS data fail`));
+            }
+            next(err, `Update ${dns.name} to ${addr}`);
+          });
+        }
+      }, function(err, result){
+        if (err) {
+          console.error(err);
+        } else {
+          debug('ddclient finish', result.join(';'));
+          console.log(result.join("\n"));
+        }
+      });
     }
   });
 }, null, true);

@@ -1,13 +1,10 @@
 {
   "name": "node-ddclient",
-  "version": "0.0.1",
-  "description": "A node version of ddclient",
+  "version": "1.0.0",
+  "description": "lightweight ddclient with nodejs",
   "main": "index.js",
   "bin": {
     "node-ddclient": "./node-ddclient.js"
-  },
-  "scripts": {
-    "test": "npm test"
   },
   "keywords": [
     "ddclient",
@@ -19,6 +16,7 @@
   "dependencies": {
     "request": "~2.67.0",
     "async": "~1.5.0",
-    "cron": "~1.1.0"
+    "cron": "~1.1.0",
+    "debug": "~2.2.0"
   }
 }

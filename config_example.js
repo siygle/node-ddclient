@@ -1,6 +1,7 @@
 
 module.exports = {
-  getIp: 'http://ifconfig.me/ip',
+  cronRule: "00 */5 * * * *",
+  getIp: "http://ifconfig.me/ip",
   cloudflare: {
     email: "youremail@example.com",
     apikey: "API_TOKEN",
