@@ -28,5 +28,5 @@ Use cron and daemon to run as daemon regular. You can copy node-ddclient.conf to
 
 ### Changelog
 
-v1.0.0 - Change subdomain type to Array, support multiple subdomain now.
+v1.0.0 - Change subdomain type to Array, support multiple subdomain now.  
 v1.1.0 - Remove TMP_FILE && fs module dependencies.
