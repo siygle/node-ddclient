@@ -76,6 +76,7 @@ function getDnsInfo(cb) {
  */
 function updateDnsInfo(dns, cb) {
   var param = config.cloudflare;
+  debug('updateDnsInfo', dns);
 
   request(CF_API, {
     method: 'POST',
@@ -85,7 +86,7 @@ function updateDnsInfo(dns, cb) {
       email: param.email,
       z: param.domain,
       type: 'A',
-      name: param.subdomain,
+      name: dns.subdomain,
       id: dns.id,
       content: dns.content,
       service_mode: '0',
@@ -121,13 +122,17 @@ let job = new CronJob(config.cronRule, function() {
         } else {
           let update = {
             id: dns.rec_id,
-            content: addr
+            content: addr,
+            subdomain: dns.name
           };
           updateDnsInfo(update, function(err, data) {
-            if (data.result != 'success') {
-              console.error(`Update ${dns.name} DNS data fail`);
-            }
-            next(err, `Update ${dns.name} to ${addr}`);
+            if (err || data.result != 'success') {
+              let message = `Update ${dns.name} DNS data fail`;
+              console.error(err, data, message);
+              next(message);
+            } else {
+              next(err, `Update ${dns.name} to ${addr}`);
+            } 
           });
         }
       }, function(err, result){
